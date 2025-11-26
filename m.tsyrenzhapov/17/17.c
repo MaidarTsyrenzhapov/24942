@@ -10,6 +10,7 @@
 #define KILL 0x15
 #define CTRL_W 0x17
 #define CTRL_D 0x04
+#define CTRL_G 0x07
 
 struct termios orig_attrs;
 
@@ -33,17 +34,15 @@ int is_printable(char c) {
     return c >= 32 && c <= 126;
 }
 
-int find_last_space(char *line, int pos) {
-    for (int i = pos - 1; i >= 0; i--) {
-        if (line[i] == ' ') return i;
-    }
-    return -1;
-}
-
 int find_word_start(char *line, int pos) {
+    if (pos == 0) return 0;
+    
     int i = pos - 1;
+    // Пропускаем пробелы
     while (i >= 0 && line[i] == ' ') i--;
+    // Идем до начала слова
     while (i >= 0 && line[i] != ' ') i--;
+    
     return i + 1;
 }
 
@@ -52,24 +51,25 @@ int main(void) {
     int pos = 0;
     int current_line_length = 0;
     char c;
+    char beep = CTRL_G;  // Создаем переменную для звукового сигнала
     
     setup_terminal();
     printf("Line editor (Ctrl+D to exit): ");
     fflush(stdout);
-    current_line_length = 24; // Prompt length
+    current_line_length = 24; // Длина приглашения
 
     while (1) {
         read(STDIN_FILENO, &c, 1);
         
-        // Exit on Ctrl+D from any position
-        if (c == CTRL_D) {
+        // Выход по Ctrl+D только в начале строки
+        if (c == CTRL_D && pos == 0) {
             printf("\n");
             break;
         }
         
-        // Ignore non-printable chars
+        // Проверяем допустимые символы
         if (!is_printable(c) && c != ERASE && c != KILL && c != CTRL_W) {
-            write(STDOUT_FILENO, "\a", 1);
+            write(STDOUT_FILENO, &beep, 1); // Звуковой сигнал
             continue;
         }
         
@@ -78,70 +78,86 @@ int main(void) {
                 if (pos > 0) {
                     pos--;
                     current_line_length--;
+                    // Удаляем символ с экрана
                     printf("\b \b");
                     fflush(stdout);
+                } else {
+                    write(STDOUT_FILENO, &beep, 1);
                 }
                 break;
                 
-            case KILL: // Clear line
-                while (pos > 0) {
-                    pos--;
-                    printf("\b \b");
+            case KILL: // Очистка всей строки
+                if (pos > 0) {
+                    // Возвращаемся в начало строки
+                    for (int i = 0; i < current_line_length; i++) {
+                        printf("\b \b");
+                    }
+                    pos = 0;
+                    current_line_length = 0;
+                    fflush(stdout);
+                } else {
+                    write(STDOUT_FILENO, &beep, 1);
                 }
-                current_line_length = 0;
-                fflush(stdout);
                 break;
                 
-            case CTRL_W: // Delete word
+            case CTRL_W: // Удаление последнего слова
                 if (pos > 0) {
                     int word_start = find_word_start(line, pos);
                     int chars_to_delete = pos - word_start;
+                    
+                    // Удаляем с экрана
                     for (int i = 0; i < chars_to_delete; i++) {
                         printf("\b \b");
                         current_line_length--;
                     }
                     pos = word_start;
                     fflush(stdout);
+                } else {
+                    write(STDOUT_FILENO, &beep, 1);
                 }
                 break;
                 
-            default: // Normal character
-                line[pos++] = c;
-                
-                // Line wrapping logic
+            default: // Обычный символ
+                // Проверяем ограничение длины
                 if (current_line_length >= MAX_LINE) {
-                    int last_space = find_last_space(line, pos);
+                    // Ищем последний пробел для переноса
+                    int last_space = -1;
+                    for (int i = pos - 1; i >= 0; i--) {
+                        if (line[i] == ' ') {
+                            last_space = i;
+                            break;
+                        }
+                    }
                     
                     if (last_space != -1) {
-                        int word_start = last_space + 1;
-                        int word_length = pos - word_start;
-                        
-                        if (word_length < MAX_LINE) {
-                            // Wrap whole word
-                            printf("\n");
-                            for (int i = word_start; i < pos; i++) {
-                                write(STDOUT_FILENO, &line[i], 1);
-                            }
-                            current_line_length = word_length;
-                        } else {
-                            // Break long word
-                            printf("\n");
-                            write(STDOUT_FILENO, &c, 1);
-                            current_line_length = 1;
+                        // Переносим на новую строку
+                        printf("\n");
+                        // Выводим оставшуюся часть слова
+                        for (int i = last_space + 1; i < pos; i++) {
+                            write(STDOUT_FILENO, &line[i], 1);
                         }
+                        // Выводим новый символ
+                        write(STDOUT_FILENO, &c, 1);
+                        line[pos++] = c;
+                        current_line_length = (pos - last_space - 1) + 1;
                     } else {
-                        // No spaces - break at char
+                        // Нет пробелов - переносим символ на новую строку
                         printf("\n");
                         write(STDOUT_FILENO, &c, 1);
+                        line[pos++] = c;
                         current_line_length = 1;
                     }
                 } else {
-                    // Normal output
+                    // Обычный вывод
                     write(STDOUT_FILENO, &c, 1);
+                    line[pos++] = c;
                     current_line_length++;
                 }
+                break;
         }
+        
         line[pos] = '\0';
+        fflush(stdout);
     }
     
     return 0;
