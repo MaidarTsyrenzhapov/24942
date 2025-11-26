@@ -15,7 +15,7 @@ int main() {
     pipe(pipa);
     pid = fork();
     
-    if (pid < 0){ // Ошибка
+    if (pid < 0){ // Ошибка 
         perror("fork");
         exit(EXIT_FAILURE);
     }

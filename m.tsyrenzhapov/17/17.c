@@ -5,8 +5,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 
-#define MAX_LINE 40
-#define ERASE 0x7F
+#define MAX_LINE 40 //backspace
+#define ERASE 0x7F //ctrl + u
 #define KILL 0x15
 #define CTRL_W 0x17
 #define CTRL_D 0x04
