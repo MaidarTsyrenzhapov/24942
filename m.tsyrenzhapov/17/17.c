@@ -20,7 +20,7 @@ void restore_terminal(void) {
 
 void setup_terminal(void) {
     struct termios attrs;
-    tcgetattr(STDIN_FILENO, &orig_attrs);   
+    tcgetattr(STDIN_FILENO, &orig_attrs);
     atexit(restore_terminal);
     
     attrs = orig_attrs;
